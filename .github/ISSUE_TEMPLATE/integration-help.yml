@@ -1,0 +1,24 @@
+name: Integration help
+description: Ask about adding crawldex-report-py to an agent, browser, or CI workflow
+title: "[Integration]: "
+labels: ["integration-help"]
+body:
+  - type: input
+    id: stack
+    attributes:
+      label: Agent or automation stack
+      placeholder: Playwright, browser-use, Stagehand, Skyvern, Claude Code, Cursor, VS Code
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What public website-task preflight or reporting flow are you trying to add?
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Do not paste credentials, cookies, screenshots, browser traces, or private data.
