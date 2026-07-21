@@ -34,6 +34,17 @@ class EchoTests(unittest.TestCase):
                 "task_attempted": False,
             },
         )
+        self.assertEqual(
+            build_echo_payload("atr_0123456789abcdef", "followed", False, True),
+            {
+                "record_id": "atr_0123456789abcdef",
+                "action_taken": "followed",
+                "task_attempted": False,
+                "removed_in_batch": True,
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "removed_in_batch must be a boolean"):
+            build_echo_payload("atr_0123456789abcdef", "followed", False, "yes")
 
     def test_direct_echo_posts_payload(self):
         RecordingHandler.calls = []
@@ -44,6 +55,7 @@ class EchoTests(unittest.TestCase):
                     "atr_0123456789abcdef",
                     "partial",
                     task_attempted=True,
+                    removed_in_batch=True,
                     api_origin=f"http://127.0.0.1:{server.server_port}",
                     timeout=1.0,
                 )
@@ -60,6 +72,7 @@ class EchoTests(unittest.TestCase):
                     "record_id": "atr_0123456789abcdef",
                     "action_taken": "partial",
                     "task_attempted": True,
+                    "removed_in_batch": True,
                 },
             )
         finally:
@@ -155,6 +168,7 @@ class EchoTests(unittest.TestCase):
 
             self.assertTrue(receipt.accepted)
             self.assertEqual([call["path"] for call in RecordingHandler.calls], ["/api/v1/runs"])
+            self.assertEqual(RecordingHandler.calls[0]["body"]["record_id"], "atr_0123456789abcdef")
         finally:
             stop_test_server(server, thread)
 
@@ -188,6 +202,7 @@ class EchoTests(unittest.TestCase):
             self.assertTrue(receipt.accepted)
             self.assertEqual([call["path"] for call in RecordingHandler.calls], ["/api/v1/runs", "/api/v1/echo"])
             report_json = json.dumps(RecordingHandler.calls[0]["body"], sort_keys=True)
+            self.assertEqual(RecordingHandler.calls[0]["body"]["record_id"], "atr_0123456789abcdef")
             self.assertIn("sha256:", report_json)
             self.assertNotIn("jane@example.com", report_json)
             self.assertNotIn("secret-token", report_json)

@@ -10,6 +10,7 @@ class MappingTests(unittest.TestCase):
             {
                 "site": "demo-shop.crawldex.com",
                 "task": "commerce.checkout",
+                "record_id": "atr_0123456789abcdef",
                 "agent_profile": {
                     "stack": "browser-use",
                     "model": "gpt-5.5",
@@ -43,6 +44,7 @@ class MappingTests(unittest.TestCase):
             {
                 "site",
                 "task",
+                "record_id",
                 "agent_profile",
                 "outcome",
                 "friction",
@@ -57,10 +59,43 @@ class MappingTests(unittest.TestCase):
             },
         )
         self.assertEqual(payload["duration_sec"], 312)
+        self.assertEqual(payload["record_id"], "atr_0123456789abcdef")
         self.assertEqual(payload["evidence"]["artifact_types"], ["redacted_trace"])
         self.assertNotIn("artifact", payload["evidence"])
         self.assertRegex(payload["evidence"]["hash"], r"^sha256:[0-9a-f]{64}$")
         self.assertEqual(payload["agent_profile"]["capabilities"]["evidence_redaction"], "redacted")
+
+    def test_maps_camel_case_record_id_and_rejects_invalid_or_conflicting_values(self):
+        payload = map_to_run_report(
+            {
+                "site": "example.com",
+                "task": "subscriptions.cancel",
+                "outcome": "blocked",
+                "recordId": "atr_0123456789abcdef",
+            }
+        )
+        self.assertEqual(payload["record_id"], "atr_0123456789abcdef")
+
+        with self.assertRaisesRegex(ValueError, "record_id must be an Agent Trust Record id"):
+            map_to_run_report(
+                {
+                    "site": "example.com",
+                    "task": "subscriptions.cancel",
+                    "outcome": "blocked",
+                    "record_id": "private-account-reference",
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "Conflicting values supplied"):
+            map_to_run_report(
+                {
+                    "site": "example.com",
+                    "task": "subscriptions.cancel",
+                    "outcome": "blocked",
+                    "record_id": "atr_0123456789abcdef",
+                    "recordId": "atr_fedcba9876543210",
+                }
+            )
 
     def test_dry_run_returns_mapped_payload_without_network(self):
         reporter = CrawlDexReporter(report_url="https://crawldex.com/api/v1/runs", dry_run=True)

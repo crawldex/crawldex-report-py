@@ -357,8 +357,14 @@ class CrawlDexReporter:
     def report_outcome(self, input_data: Mapping[str, Any]) -> SubmissionReceipt:
         return self.report(input_data)
 
-    def echo(self, record_id: str, action: str, task_attempted: bool = True) -> EchoReceipt:
-        payload = build_echo_payload(record_id, action, task_attempted)
+    def echo(
+        self,
+        record_id: str,
+        action: str,
+        task_attempted: bool = True,
+        removed_in_batch: Optional[bool] = None,
+    ) -> EchoReceipt:
+        payload = build_echo_payload(record_id, action, task_attempted, removed_in_batch)
         endpoints = derive_echo_urls(self.echo_url, self.api_origin, self.report_url)
         endpoint = endpoints[0] if endpoints else ""
 
@@ -390,8 +396,14 @@ class CrawlDexReporter:
             raw=body,
         )
 
-    def echo_record(self, record_id: str, action: str, task_attempted: bool = True) -> EchoReceipt:
-        return self.echo(record_id, action, task_attempted)
+    def echo_record(
+        self,
+        record_id: str,
+        action: str,
+        task_attempted: bool = True,
+        removed_in_batch: Optional[bool] = None,
+    ) -> EchoReceipt:
+        return self.echo(record_id, action, task_attempted, removed_in_batch)
 
     def map_to_run_report(self, input_data: Mapping[str, Any]) -> Dict[str, Any]:
         return map_to_run_report(input_data)
@@ -399,13 +411,14 @@ class CrawlDexReporter:
     def _maybe_auto_echo(self, input_data: Mapping[str, Any], receipt: SubmissionReceipt) -> None:
         if not self.auto_report or not receipt.accepted:
             return
-        record_id = input_data.get("record_id") or input_data.get("recordId")
+        record_id = receipt.payload.get("record_id")
         if not record_id:
             return
         action = input_data.get("echo_action") or input_data.get("echoAction") or "followed"
         task_attempted = input_data.get("task_attempted", input_data.get("taskAttempted", True))
+        removed_in_batch = input_data.get("removed_in_batch", input_data.get("removedInBatch"))
         try:
-            self.echo(str(record_id), str(action), bool(task_attempted))
+            self.echo(str(record_id), str(action), bool(task_attempted), removed_in_batch)
         except ValueError as exc:
             self._logger.warning("CrawlDex auto_report echo skipped: %s", exc)
 
@@ -714,6 +727,10 @@ def map_to_run_report(input_data: Mapping[str, Any]) -> Dict[str, Any]:
         "outcome": validate_enum("outcome", required(input_data, "outcome"), OUTCOMES),
     }
 
+    record_id = aliased_value(input_data, "record_id", "recordId")
+    if record_id is not None:
+        payload["record_id"] = validate_record_id(record_id)
+
     agent_profile = map_agent_profile(input_data.get("agent_profile"))
     if agent_profile:
         payload["agent_profile"] = agent_profile
@@ -756,6 +773,7 @@ def echo(
     action: str,
     *,
     task_attempted: bool = True,
+    removed_in_batch: Optional[bool] = None,
     report_url: Optional[str] = None,
     echo_url: Optional[str] = None,
     api_origin: Optional[str] = None,
@@ -768,18 +786,25 @@ def echo(
         api_origin=api_origin,
         timeout=timeout,
         dry_run=dry_run,
-    ).echo(record_id, action, task_attempted)
+    ).echo(record_id, action, task_attempted, removed_in_batch)
 
 
-def build_echo_payload(record_id: str, action: str, task_attempted: bool = True) -> Dict[str, Any]:
-    clean_record_id = validate_text("record_id", record_id, 128)
-    if not ECHO_RECORD_ID_RE.fullmatch(clean_record_id):
-        raise ValueError("record_id must be an Agent Trust Record id like atr_0123456789abcdef.")
-    return {
-        "record_id": clean_record_id,
+def build_echo_payload(
+    record_id: str,
+    action: str,
+    task_attempted: bool = True,
+    removed_in_batch: Optional[bool] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "record_id": validate_record_id(record_id),
         "action_taken": validate_enum("action", action, ECHO_ACTIONS),
         "task_attempted": bool(task_attempted),
     }
+    if removed_in_batch is not None:
+        if not isinstance(removed_in_batch, bool):
+            raise ValueError("removed_in_batch must be a boolean when provided.")
+        payload["removed_in_batch"] = removed_in_batch
+    return payload
 
 
 def map_agent_profile(input_data: Optional[Mapping[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -1328,6 +1353,13 @@ def validate_text(name: str, value: Any, max_length: int) -> str:
     return clean
 
 
+def validate_record_id(value: Any) -> str:
+    clean = validate_text("record_id", value, 128)
+    if not ECHO_RECORD_ID_RE.fullmatch(clean):
+        raise ValueError("record_id must be an Agent Trust Record id like atr_0123456789abcdef.")
+    return clean
+
+
 def validate_enum(name: str, value: Any, values: set[str]) -> str:
     if isinstance(value, str) and value in values:
         return value
@@ -1370,6 +1402,14 @@ def required(input_data: Mapping[str, Any], key: str) -> Any:
     if value is None:
         raise ValueError(f"{key} is required.")
     return value
+
+
+def aliased_value(input_data: Mapping[str, Any], snake_key: str, camel_key: str) -> Any:
+    snake_value = input_data.get(snake_key)
+    camel_value = input_data.get(camel_key)
+    if snake_value is not None and camel_value is not None and snake_value != camel_value:
+        raise ValueError(f"Conflicting values supplied for {snake_key} and {camel_key}.")
+    return snake_value if snake_value is not None else camel_value
 
 
 def strip_control_chars(value: str) -> str:
