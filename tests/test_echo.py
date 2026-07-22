@@ -100,6 +100,22 @@ class EchoTests(unittest.TestCase):
         finally:
             stop_test_server(server, thread)
 
+    def test_reporter_echo_sends_configured_agent_key(self):
+        RecordingHandler.calls = []
+        server, thread = start_test_server(RecordingHandler)
+        try:
+            reporter = CrawlDexReporter(
+                api_origin=f"http://127.0.0.1:{server.server_port}",
+                agent_key="aa_echo_test_key",
+                timeout=1.0,
+            )
+            receipt = reporter.echo("atr_0123456789abcdef", "followed")
+
+            self.assertTrue(receipt.accepted)
+            self.assertEqual(RecordingHandler.calls[0]["headers"].get("x-crawldex-agent-key"), "aa_echo_test_key")
+        finally:
+            stop_test_server(server, thread)
+
     def test_direct_echo_falls_back_after_vercel_challenge(self):
         ChallengeHandler.calls = []
         RecordingHandler.calls = []

@@ -305,7 +305,7 @@ class CrawlDexReporter:
             )
 
         try:
-            _endpoint, body = self._get_json_with_fallback(endpoints, timeout=min(self.timeout, 5.0))
+            _endpoint, body = self._get_json_with_fallback(endpoints, timeout=min(self.timeout, 5.0), include_auth=True)
         except CrawlDexNetworkError as exc:
             return self._fail_open_trust_record(clean_site, clean_task, f"CrawlDex trust_record failed open: {exc}")
 
@@ -385,7 +385,7 @@ class CrawlDexReporter:
             )
 
         try:
-            endpoint, body = self._post_json_with_fallback(endpoints, payload, timeout=min(self.timeout, 5.0), include_auth=False)
+            endpoint, body = self._post_json_with_fallback(endpoints, payload, timeout=min(self.timeout, 5.0), include_auth=True)
         except CrawlDexNetworkError as exc:
             return self._fail_open_echo(f"CrawlDex echo failed open: {exc}", endpoint, payload)
 
@@ -443,8 +443,14 @@ class CrawlDexReporter:
     ) -> tuple[str, Mapping[str, Any]]:
         return self._request_json_with_fallback("POST", endpoints, payload, timeout=timeout, include_auth=include_auth)
 
-    def _get_json_with_fallback(self, endpoints: Sequence[str], *, timeout: float) -> tuple[str, Mapping[str, Any]]:
-        return self._request_json_with_fallback("GET", endpoints, None, timeout=timeout, include_auth=False)
+    def _get_json_with_fallback(
+        self,
+        endpoints: Sequence[str],
+        *,
+        timeout: float,
+        include_auth: bool = False,
+    ) -> tuple[str, Mapping[str, Any]]:
+        return self._request_json_with_fallback("GET", endpoints, None, timeout=timeout, include_auth=include_auth)
 
     def _request_json_with_fallback(
         self,

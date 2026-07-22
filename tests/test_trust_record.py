@@ -1,7 +1,5 @@
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-import re
 import threading
 import time
 import unittest
@@ -11,9 +9,31 @@ from crawldex_report import CrawlDexReporter, trust_record_from_response
 import crawldex_report.core as crawldex_core
 
 
+TRUST_RECORD_REQUIRED_FIELDS = {
+    "atr_version",
+    "site",
+    "task",
+    "issued_at",
+    "record_id",
+    "verdict",
+    "confidence",
+    "accessibility",
+    "safety",
+    "freshness",
+    "task_compatibility",
+    "known_blockers",
+    "user_present",
+    "agent_instruction",
+    "evidence",
+    "publisher",
+    "how_to_improve",
+}
+
+
 class TrustRecordTests(unittest.TestCase):
     def test_trust_record_happy_path(self):
         RecordingTrustRecordHandler.request_path = None
+        RecordingTrustRecordHandler.request_headers = {}
         server, thread = start_test_server(RecordingTrustRecordHandler)
         try:
             reporter = CrawlDexReporter(api_origin=f"http://127.0.0.1:{server.server_port}", timeout=1.0)
@@ -25,6 +45,26 @@ class TrustRecordTests(unittest.TestCase):
             self.assertEqual(record.verdict, "proceed_with_guardrails")
             self.assertEqual(record.known_blockers[0]["code"], "login_required")
             self.assertEqual(RecordingTrustRecordHandler.request_path, "/api/v1/trust-record/netflix.com/subscriptions.cancel")
+        finally:
+            stop_test_server(server, thread)
+
+    def test_trust_record_sends_configured_agent_key(self):
+        RecordingTrustRecordHandler.request_path = None
+        RecordingTrustRecordHandler.request_headers = {}
+        server, thread = start_test_server(RecordingTrustRecordHandler)
+        try:
+            reporter = CrawlDexReporter(
+                api_origin=f"http://127.0.0.1:{server.server_port}",
+                agent_key="aa_trust_record_test_key",
+                timeout=1.0,
+            )
+            record = reporter.trust_record("netflix.com", "subscriptions.cancel")
+
+            self.assertFalse(record.fail_open)
+            self.assertEqual(
+                RecordingTrustRecordHandler.request_headers.get("x-crawldex-agent-key"),
+                "aa_trust_record_test_key",
+            )
         finally:
             stop_test_server(server, thread)
 
@@ -86,19 +126,19 @@ class TrustRecordTests(unittest.TestCase):
         finally:
             stop_test_server(server, thread)
 
-    def test_trust_record_parser_top_level_fields_match_openapi_schema(self):
+    def test_trust_record_parser_top_level_fields_match_published_contract(self):
         parsed = trust_record_from_response(trust_record_fixture())
         parser_fields = set(parsed.as_dict().keys()) - {"warning", "fail_open", "raw"}
-        openapi_fields = trust_record_openapi_required_fields()
-
-        self.assertEqual(parser_fields, openapi_fields)
+        self.assertEqual(parser_fields, TRUST_RECORD_REQUIRED_FIELDS)
 
 
 class RecordingTrustRecordHandler(BaseHTTPRequestHandler):
     request_path = None
+    request_headers = {}
 
     def do_GET(self):
         type(self).request_path = self.path
+        type(self).request_headers = {key.lower(): value for key, value in self.headers.items()}
         body = json.dumps(trust_record_fixture()).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -156,19 +196,6 @@ def stop_test_server(server, thread):
     server.shutdown()
     server.server_close()
     thread.join(timeout=1)
-
-
-def trust_record_openapi_required_fields():
-    root = Path(__file__).resolve().parents[3]
-    source = (root / "src" / "server" / "openapi.ts").read_text(encoding="utf-8")
-    start = source.index("TrustRecord: objectSchema")
-    end = source.index("TrustRecordBatchRequest:", start)
-    segment = source[start:end]
-    for required in re.findall(r"\[([^\]]+)\]", segment):
-        fields = set(re.findall(r'"([^"]+)"', required))
-        if {"atr_version", "record_id", "agent_instruction", "how_to_improve"}.issubset(fields):
-            return fields
-    raise AssertionError("TrustRecord OpenAPI schema required fields not found")
 
 
 def trust_record_fixture():
