@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use crawldex-report-py, cite CrawlDex and the relevant dataset or benchmark artifact."
+title: "crawldex-report-py"
+version: "0.3.0"
+date-released: "2026-07-04"
+authors:
+  - family-names: "CrawlDex"
+    given-names: "Project"
+url: "https://crawldex.com"
+repository-code: "https://github.com/crawldex/crawldex-report-py"
+license: "MIT"
+preferred-citation:
+  type: generic
+  title: "CrawlDex"
+  authors:
+    - family-names: "CrawlDex"
+      given-names: "Project"
+  url: "https://crawldex.com"
+references:
+  - type: data
+    title: "CrawlDex Agent Web Outcomes"
+    authors:
+      - family-names: "CrawlDex"
+        given-names: "Project"
+    url: "https://crawldex.com/datasets"
+  - type: data
+    title: "CrawlDex Bench"
+    authors:
+      - family-names: "CrawlDex"
+        given-names: "Project"
+    url: "https://crawldex.com/bench"
+  - type: generic
+    title: "CrawlDex public project"
+    authors:
+      - family-names: "CrawlDex"
+        given-names: "Project"
+    url: "https://crawldex.com"
